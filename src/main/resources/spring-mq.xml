@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>  
+    <beans xmlns="http://www.springframework.org/schema/beans"  
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"  
+        xmlns:context="http://www.springframework.org/schema/context"  
+        xmlns:mvc="http://www.springframework.org/schema/mvc"
+        xmlns:amq="http://activemq.apache.org/schema/core"
+        xsi:schemaLocation="http://www.springframework.org/schema/beans
+                            http://www.springframework.org/schema/beans/spring-beans-4.3.xsd
+                            http://www.springframework.org/schema/context
+                            http://www.springframework.org/schema/context/spring-context-4.3.xsd
+                            http://www.springframework.org/schema/mvc
+                            http://www.springframework.org/schema/mvc/spring-mvc-4.3.xsd
+                            http://www.springframework.org/schema/jms
+                            http://www.springframework.org/schema/jsm/spring-jms-4.3.xsd
+                            http://activemq.apache.org/schema/core
+        					http://activemq.apache.org/schema/core/activemq-core-5.9.0.xsd">  
+    
+    
+    <context:component-scan base-package="com.ssz.jms.activemq" />
+    
+    <amq:connectionFactory id="amqConnectionFactory" brokerURL="tcp://192.168.1.136:61616" userName="admin" password="admin" />
+    
+    <!-- SpringCaching 连接工厂 为客户端提Session供缓存功能 -->
+    <bean id="connectionFactory" class="org.springframework.jms.connection.CachingConnectionFactory">
+    	<!-- mq 连接工厂 -->
+        <constructor-arg name="targetConnectionFactory" ref="amqConnectionFactory" />
+        <!-- 设置session缓存个数(示例值),如果连接工厂是生产者使用，那么那么sessionSize的数量影响到并发的性能,如果是消费者使用，那么这个设置没有影响-->
+        <property name="sessionCacheSize" value="100" />
+    </bean>
+    
+    <!-- 定义消息队列（Queue） -->
+    <bean id="dnkxQueueDestination" class="org.apache.activemq.command.ActiveMQQueue">
+        <!-- 设置消息队列的名字 -->
+        <constructor-arg>
+            <value>FirstQueue</value>
+        </constructor-arg>
+    </bean>
+    
+    <!-- 配置JMS模板（Queue），Spring提供的JMS工具类，它发送、接收消息。 -->
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="connectionFactory" /><!-- 连接工厂 -->
+        <property name="defaultDestination" ref="dnkxQueueDestination" />
+        <property name="explicitQosEnabled" value="true" /> <!-- 使 deliveryMode, priority, timeToLive设置生效 -->
+        <property name="deliveryPersistent" value="true" /><!-- 设置NON_PERSISTENT模式, 默认为PERSISTENT -->
+        <property name="priority" value="4"/><!-- 设置优先级, 默认为4 越高优先级越高。kahaDB只支持3种优先级，<4,=4,>4 -->
+        <property name="timeToLive" value="30000" /><!-- 过期时间，毫秒（示例值）默认是不过期 -->
+        <property name="receiveTimeout" value="10000" />
+        <!-- true是topic，false是queue，默认是false，此处显示写出false -->
+        <property name="pubSubDomain" value="false" />
+    </bean>
+    <!-- 发送端bean配置 -->
+	<bean id="sender" class="com.test.Sender">
+	    <property name="jmsTemplate" ref="sender"/> <!-- 发送模版 -->
+	    <property name="destination" ref="myQueue"/> <!-- 发送到的目的地queue或者是topic -->
+	</bean>
+    
+    <!-- 
+    	说明：
+    		虽然NON_PERSISTENT性能上要比PERSISTENT高不少，但是出于对消息可靠性的考虑，
+    		还是建议将PERSISTENT打开，PERSISTEN有一个最大的好处在于，持久化的消息在mq服务器宕机之后，
+    		消息不会丢失，在重启服务的时候，消息将恢复，而非持久话的消息，在有效时间内，mq服务down机之后，
+    		消息会丢失掉。过期时间的设置，必须设置过期时间，如果不设置过期时间有一个明显的缺陷，
+    		就是可能存在消息不会被消费掉，又由于不过期，这样的消息会占用磁盘空间，
+    		由于客户端设置了非持久化和持久化消息都会被放置到死信队列，这样，消息过期之后，
+    		会将消息放置在死信队列，如果不需要了，可以人为清除死信队列中的信息，释放空间
+     -->
+    
+    
+    <!-- 配置消息队列监听者（Queue） -->
+    <bean id="queueMessageListener" class="com.ssz.jms.activemq.QueueMessageListener" />
+    
+    <!-- 显示注入消息监听容器（Queue），配置连接工厂，监听的目标是dnkxQueueDestination，监听器是上面定义的监听器 -->
+    <bean id="queueListenerContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory" /><!-- 连接工厂-->
+        <property name="destination" ref="dnkxQueueDestination" /><!-- 目的地址queue或者topic -->
+        <property name="messageListener" ref="queueMessageListener" /><!-- 消息消费监听对象，实现MessageListener 接口 -->
+        <property name="concurrentConsumers" value="2" />  <!-- 初始2个Consumer, 可动态扩展到10(示例值) -->
+        <property name="maxConcurrentConsumers" value="10" /> <!-- 最大允许的消费者数量(示例值) -->
+        <!-- 在使用Spring的情况下，AUTO确认模式会在消息进入业务方法前进行回应，Client则会在之后，DUL_OK可以延迟消息回应并批量处理，但这可能导致消息重复发送。 -->
+        <property name="sessionAcknowledgeModeName" value="CLIENT_ACKNOWLEDGE" />
+        <property name="sessionTransacted" value="true"/> <!--事务开关 -->
+        <!-- 是否持久化订阅,topic有效，次属性仅在订阅topic时有效，在使用queue消费时，请注释掉，否则会影响启动 -->
+        <property name="subscriptionDurable" value="true"/>
+        <!--持久化订阅名称，次属性仅在订阅topic时有效，在使用queue消费时，请注释掉，否则会影响启动 -->
+        <!-- <property name="durableSubscriptionName" value="topicYkListenerA" /> -->
+    </bean>
+    <!-- 
+    	说明：
+	    	1、sessionAcknowledgeModeName设置为CLIENT_ACKNOWLEDGE，为的是保证消息在处理之后应答，
+	    	这样也是保证消息不丢失的一个做法，如果设置为AUTO模式，在业务处理之前，就回答服务器我收到消息了，
+	    	这时服务器是不会理会业务处理是否成功(因为可能会由于异常或者其他因素导致代码中断而处理不成功)，
+	    	将此消息认为是消费过了，而删除掉。
+	    	
+			2、在使用消息订阅(Topic)时，建议使用订阅持久化，订阅持久化可以让消费端处在不活跃状态期间依旧能够收到消息；
+     -->
+    
+ </beans>  
