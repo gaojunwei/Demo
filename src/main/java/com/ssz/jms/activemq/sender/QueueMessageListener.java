@@ -1,4 +1,4 @@
-package com.ssz.jms.activemq;
+package com.ssz.jms.activemq.sender;
 
 import javax.jms.JMSException;
 import javax.jms.MapMessage;
@@ -11,8 +11,8 @@ import org.apache.log4j.Logger;
  * ÏûÏ¢¼àÌıÆ÷ 
  * @author gjw
  */
-public class QueueMessageListenerB implements MessageListener {
-	private static Logger 		logger = Logger.getLogger(QueueMessageListenerB.class.getName());
+public class QueueMessageListener implements MessageListener {
+	private static Logger 		logger = Logger.getLogger(QueueMessageListener.class.getName());
 	@Override
 	public void onMessage(Message message) {
 		MapMessage mapMessage = (MapMessage) message;

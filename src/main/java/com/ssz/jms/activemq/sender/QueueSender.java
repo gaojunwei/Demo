@@ -1,4 +1,4 @@
-package com.ssz.jms.activemq;
+package com.ssz.jms.activemq.sender;
 
 import javax.annotation.Resource;
 import javax.jms.Destination;
@@ -11,7 +11,7 @@ import org.springframework.jms.core.MessageCreator;
 import org.springframework.stereotype.Service;
 
 @Service
-public class ProductService {
+public class QueueSender {
 	@Resource(name="jmsTemplate")  
 	private JmsTemplate jmsTemplate;  
 	
@@ -21,6 +21,10 @@ public class ProductService {
 	* @param msg
 	*/
 	public void sendMessage(Destination destination,final String msg) {
+		if(destination == null)
+		{
+			destination = jmsTemplate.getDefaultDestination();
+		}
 		System.out.println("向队列--"+destination.toString()+"--发送消息--"+msg);
 		jmsTemplate.send(destination, new MessageCreator() {
 			@Override  
@@ -35,13 +39,16 @@ public class ProductService {
 	 * @param msg
 	 */
 	public void sendMessage(final String msg) {
-		System.out.println("向队列--"+jmsTemplate.getDefaultDestinationName().toString()+"--发送消息--"+msg);
-		
+		System.out.println("向队列--"+jmsTemplate.getDefaultDestination()+"--发送消息--"+msg);
 		jmsTemplate.send(new MessageCreator() {
 			@Override
 			public Message createMessage(Session session) throws JMSException {
 				return session.createTextMessage(msg);
 			}
 		});
+	}
+
+	public void setJmsTemplate(JmsTemplate jmsTemplate) {
+		this.jmsTemplate = jmsTemplate;
 	}
 }
